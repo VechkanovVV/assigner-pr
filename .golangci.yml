@@ -1,0 +1,129 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - typecheck
+    
+    - gofmt
+    - gofumpt
+    - goimports
+    - whitespace
+    - misspell
+    
+    - gocritic
+    - revive
+    - unconvert
+    - unparam
+    - bodyclose
+    - nilerr
+    - errname
+    - errorlint
+    - prealloc
+    - gosec
+
+linters-settings:
+  gofumpt:
+    extra-rules: true
+    
+  gofmt:
+    simplify: true
+    
+  goimports:
+    local-prefixes: github.com/VechkanovVV/assigner-pr
+    
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+      
+  staticcheck:
+    checks: ["all"]
+    
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - hugeParam
+      
+  revive:
+    rules:
+      - name: var-naming
+        severity: warning
+      - name: exported
+        severity: warning
+      - name: blank-imports
+      - name: context-as-argument
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: if-return
+      - name: increment-decrement
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: indent-error-flow
+      - name: superfluous-else
+      - name: modifies-parameter
+      - name: unreachable-code
+      - name: struct-tag
+      - name: confusing-naming
+        
+  whitespace:
+    multi-if: true
+    multi-func: true
+    
+  errcheck:
+    check-type-assertions: true
+    check-blank: false
+    
+  errorlint:
+    errorf: true
+    
+  misspell:
+    locale: US
+    
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  
+  exclude-use-default: false
+  
+  exclude-dirs:
+    - vendor
+    - third_party
+    
+  exclude-files:
+    - ".*_mock\\.go$"
+  
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - gocritic
+        
+    - linters:
+        - gomnd
+      text: "mnd: Magic number"
+      
+    - path: ".*\\.pb\\.go"
+      linters:
+        - lll
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
