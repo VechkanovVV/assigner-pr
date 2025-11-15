@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX idx_users_team_id_is_active ON users(team_id, is_active);
 
-CREATE TYPE pr_status AS ENUM ('OPEN', 'MERGED');
+DO $$ BEGIN
+    CREATE TYPE pr_status AS ENUM ('OPEN', 'MERGED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS pull_requests (
     pull_request_id TEXT PRIMARY KEY,
@@ -33,3 +36,5 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 
 CREATE INDEX idx_reviews_reviewer_id ON reviews(reviewer_id);
+
+CREATE INDEX IF NOT EXISTS idx_pull_requests_status ON pull_requests(status);
