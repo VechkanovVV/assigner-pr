@@ -3,12 +3,13 @@ package postgres
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/VechkanovVV/assigner-pr/internal/apperrors"
 	"github.com/VechkanovVV/assigner-pr/internal/storage"
 )
 
@@ -23,7 +24,7 @@ func NewPullRequestRepository(pool *pgxpool.Pool) *PullRequestRepository {
 }
 
 // Create создаёт pr с ревьюверами.
-func (p *PullRequestRepository) Create(ctx context.Context, pr storage.PullRequest) error {
+func (p *PullRequestRepository) Create(ctx context.Context, pr storage.PullRequest) *apperrors.AppError {
 	const prInsertQuery = `
 		INSERT INTO pull_requests (pull_request_id, pull_request_name, author_id, status, created_at)
         VALUES ($1, $2, $3, $4, $5)
@@ -32,7 +33,11 @@ func (p *PullRequestRepository) Create(ctx context.Context, pr storage.PullReque
 
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return fmt.Errorf("begin tx failed: %w", err)
+		log.Printf("begin tx failed: %v", err)
+		return &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
 	}
 
 	defer func() {
@@ -43,24 +48,43 @@ func (p *PullRequestRepository) Create(ctx context.Context, pr storage.PullReque
 
 	_, err = tx.Exec(ctx, prInsertQuery, pr.ID, pr.Name, pr.AuthorID, pr.Status, pr.CreatedAt)
 	if err != nil {
-		return fmt.Errorf("insert pr failed: %w", err)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return &apperrors.AppError{
+				Code:    apperrors.ErrPRExists,
+				Message: apperrors.FromCode(apperrors.ErrPRExists),
+			}
+		}
+		log.Printf("inserting pr failed: %v", err)
+		return &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
 	}
 
 	for _, rev := range pr.AssignedReviewers {
 		_, err := tx.Exec(ctx, reviewInsertQuery, pr.ID, rev)
 		if err != nil {
-			return fmt.Errorf("insert reviewer failed: %w", err)
+			log.Printf("insert reviewer failed: %v", err)
+			return &apperrors.AppError{
+				Code:    apperrors.ErrInternalIssue,
+				Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+			}
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit failed: %w", err)
+		log.Printf("commit failed: %v", err)
+		return &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
 	}
 	return nil
 }
 
 // Get возвращает pr по id.
-func (p *PullRequestRepository) Get(ctx context.Context, prID string) (storage.PullRequest, error) {
+func (p *PullRequestRepository) Get(ctx context.Context, prID string) (storage.PullRequest, *apperrors.AppError) {
 	const prQuery = `
 		SELECT pull_request_id, pull_request_name, author_id, status, created_at, merged_at
         FROM pull_requests WHERE pull_request_id = $1
@@ -71,15 +95,30 @@ func (p *PullRequestRepository) Get(ctx context.Context, prID string) (storage.P
 
 	err := p.pool.QueryRow(ctx, prQuery, prID).Scan(&pr.ID, &pr.Name, &pr.AuthorID, &pr.Status, &pr.CreatedAt, &pr.MergedAt)
 	if err != nil {
+		var appErr *apperrors.AppError
 		if errors.Is(err, pgx.ErrNoRows) {
-			return pr, errors.New("pr not found")
+			appErr = &apperrors.AppError{
+				Code:    apperrors.ErrNotFound,
+				Message: apperrors.FromCode(apperrors.ErrNotFound),
+			}
+			return pr, appErr
 		}
-		return pr, fmt.Errorf("query pr failed: %w", err)
+		log.Printf("query pr failed: %v", err)
+		appErr = &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+		return pr, appErr
 	}
 
 	rows, err := p.pool.Query(ctx, revQuery, prID)
 	if err != nil {
-		return pr, fmt.Errorf("query reviewer failed: %w", err)
+		log.Printf("query reviewer failed: %v", err)
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+		return pr, appErr
 	}
 
 	defer rows.Close()
@@ -87,44 +126,75 @@ func (p *PullRequestRepository) Get(ctx context.Context, prID string) (storage.P
 	for rows.Next() {
 		var rev string
 		if err := rows.Scan(&rev); err != nil {
-			return pr, fmt.Errorf("reviewer scan failed: %w", err)
+			log.Printf("reviewer scan failed: %v", err)
+			appErr := &apperrors.AppError{
+				Code:    apperrors.ErrInternalIssue,
+				Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+			}
+			return pr, appErr
 		}
 
 		pr.AssignedReviewers = append(pr.AssignedReviewers, rev)
 	}
 
-	return pr, rows.Err()
+	if err := rows.Err(); err != nil {
+		log.Printf("%v", err)
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+		return pr, appErr
+	}
+	return pr, nil
 }
 
 // Exists проверяет существование pr.
-func (p *PullRequestRepository) Exists(ctx context.Context, prID string) (bool, error) {
+func (p *PullRequestRepository) Exists(ctx context.Context, prID string) (bool, *apperrors.AppError) {
 	const query = `SELECT EXISTS(SELECT 1 FROM pull_requests WHERE pull_request_id = $1)`
 	var exists bool
 	err := p.pool.QueryRow(ctx, query, prID).Scan(&exists)
 	if err != nil {
-		return false, fmt.Errorf("query failed: %w", err)
+		log.Printf("query failed: %v", err)
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+		return false, appErr
 	}
 
 	return exists, nil
 }
 
 // MarkMerged проверяет pr как MERGED.
-func (p *PullRequestRepository) MarkMerged(ctx context.Context, prID string) (storage.PullRequest, error) {
+func (p *PullRequestRepository) MarkMerged(ctx context.Context, prID string) (storage.PullRequest, *apperrors.AppError) {
 	const query = `
 		UPDATE pull_requests
 		SET status = 'MERGED', merged_at = COALESCE(merged_at, NOW())
 		WHERE pull_request_id = $1
 	`
-	_, err := p.pool.Exec(ctx, query, prID)
+	ct, err := p.pool.Exec(ctx, query, prID)
 	if err != nil {
-		return storage.PullRequest{}, fmt.Errorf("update failed: %w", err)
+		log.Printf("update failed: %v", err)
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+		return storage.PullRequest{}, appErr
+	}
+
+	if ct.RowsAffected() == 0 {
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrNotFound,
+			Message: apperrors.FromCode(apperrors.ErrNotFound),
+		}
+		return storage.PullRequest{}, appErr
 	}
 
 	return p.Get(ctx, prID)
 }
 
 // ReplaceReviewer заменяет одного ревьюера на другого.
-func (p *PullRequestRepository) ReplaceReviewer(ctx context.Context, prID, oldReviewerID, newReviewerID string) error {
+func (p *PullRequestRepository) ReplaceReviewer(ctx context.Context, prID, oldReviewerID, newReviewerID string) *apperrors.AppError {
 	const query = `
 		UPDATE reviews SET reviewer_id = $3, assigned_at = NOW()
 		WHERE pull_request_id = $1 AND reviewer_id = $2
@@ -132,18 +202,27 @@ func (p *PullRequestRepository) ReplaceReviewer(ctx context.Context, prID, oldRe
 
 	ct, err := p.pool.Exec(ctx, query, prID, oldReviewerID, newReviewerID)
 	if err != nil {
-		return fmt.Errorf("update rev failed: %w", err)
+		log.Printf("update rev failed: %v", err)
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+		return appErr
 	}
 
 	if ct.RowsAffected() == 0 {
-		return errors.New("reviewers not assigned")
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrNotAssigned,
+			Message: apperrors.FromCode(apperrors.ErrNotAssigned),
+		}
+		return appErr
 	}
 
 	return nil
 }
 
 // GetByReviewer возвращет все pr пользоавтель. где он ревьюер.
-func (p *PullRequestRepository) GetByReviewer(ctx context.Context, reviewerID string) ([]storage.PullRequest, error) {
+func (p *PullRequestRepository) GetByReviewer(ctx context.Context, reviewerID string) ([]storage.PullRequest, *apperrors.AppError) {
 	const query = `
 		SELECT DISTINCT pr.pull_request_id, pr.pull_request_name, pr.author_id, pr.status, pr.created_at, pr.merged_at
         FROM pull_requests pr
@@ -152,7 +231,12 @@ func (p *PullRequestRepository) GetByReviewer(ctx context.Context, reviewerID st
 	`
 	rows, err := p.pool.Query(ctx, query, reviewerID)
 	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
+		log.Printf("query failed: %v", err)
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+		return nil, appErr
 	}
 
 	defer rows.Close()
@@ -161,22 +245,41 @@ func (p *PullRequestRepository) GetByReviewer(ctx context.Context, reviewerID st
 	for rows.Next() {
 		var pr storage.PullRequest
 		if err := rows.Scan(&pr.ID, &pr.Name, &pr.AuthorID, &pr.Status, &pr.CreatedAt, &pr.MergedAt); err != nil {
-			return nil, fmt.Errorf("scan failed: %w", err)
+			log.Printf("scan failed: %v", err)
+			appErr := &apperrors.AppError{
+				Code:    apperrors.ErrInternalIssue,
+				Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+			}
+			return nil, appErr
 		}
 
 		prs = append(prs, pr)
 	}
 
-	return prs, rows.Err()
+	if err := rows.Err(); err != nil {
+		log.Printf("%v", err)
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+
+		return nil, appErr
+	}
+	return prs, nil
 }
 
 // IsReviewerAssigned проверяет, является ли пользователь ревьюером.
-func (p *PullRequestRepository) IsReviewerAssigned(ctx context.Context, reviewerID string) (bool, error) {
+func (p *PullRequestRepository) IsReviewerAssigned(ctx context.Context, reviewerID string) (bool, *apperrors.AppError) {
 	const query = `SELECT EXISTS(SELECT 1 FROM reviews WHERE reviewer_id = $1)`
 	var exists bool
 	err := p.pool.QueryRow(ctx, query, reviewerID).Scan(&exists)
 	if err != nil {
-		return false, fmt.Errorf("query failed: %w", err)
+		log.Printf("query failed: %v", err)
+		appErr := &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+		return false, appErr
 	}
 
 	return exists, nil
