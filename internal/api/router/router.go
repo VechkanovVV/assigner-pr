@@ -13,6 +13,7 @@ func NewRouter(
 	userHandler *handlers.UserHandler,
 	prHandler *handlers.PRHandler,
 ) http.Handler {
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /team/add", teamHandler.CreateTeam)
