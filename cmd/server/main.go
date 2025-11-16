@@ -51,7 +51,9 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService, teamService)
 	prHandler := handlers.NewPRHandler(prService)
 
-	handler := router.NewRouter(teamHandler, userHandler, prHandler)
+	statsHandler := handlers.NewStatsHandler(prService)
+
+	handler := router.NewRouter(teamHandler, userHandler, prHandler, statsHandler)
 
 	serverCfg := config.LoadServer()
 	srv := &http.Server{

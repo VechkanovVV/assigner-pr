@@ -12,8 +12,8 @@ func NewRouter(
 	teamHandler *handlers.TeamHandler,
 	userHandler *handlers.UserHandler,
 	prHandler *handlers.PRHandler,
+	statsHandler *handlers.StatsHandler,
 ) http.Handler {
-
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /team/add", teamHandler.CreateTeam)
@@ -25,6 +25,8 @@ func NewRouter(
 	mux.HandleFunc("POST /pullRequest/create", prHandler.CreatePR)
 	mux.HandleFunc("POST /pullRequest/merge", prHandler.Merge)
 	mux.HandleFunc("POST /pullRequest/reassign", prHandler.ReassignReviewer)
+
+	mux.HandleFunc("GET /stats/assignments", statsHandler.GetAssignments)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

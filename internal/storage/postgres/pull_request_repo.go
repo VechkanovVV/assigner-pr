@@ -284,3 +284,90 @@ func (p *PullRequestRepository) IsReviewerAssigned(ctx context.Context, reviewer
 
 	return exists, nil
 }
+
+// CountAssignmentsByUser возвращает количество назначений по каждому ревьюеру.
+func (p *PullRequestRepository) CountAssignmentsByUser(ctx context.Context) (map[string]int, *apperrors.AppError) {
+	const query = `
+        SELECT reviewer_id, COUNT(*)
+        FROM reviews
+        GROUP BY reviewer_id
+    `
+	rows, err := p.pool.Query(ctx, query)
+	if err != nil {
+		log.Printf("query failed: %v", err)
+		return nil, &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+	}
+
+	defer rows.Close()
+
+	res := make(map[string]int)
+
+	for rows.Next() {
+		var userID string
+		var cnt int
+
+		if err := rows.Scan(&userID, &cnt); err != nil {
+			log.Printf("scan failed: %v", err)
+			return nil, &apperrors.AppError{
+				Code:    apperrors.ErrInternalIssue,
+				Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+			}
+		}
+		res[userID] = cnt
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("rows error: %v", err)
+		return nil, &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+	}
+	return res, nil
+}
+
+// CountAssignmentsByPR возвращает количество назначений по каждому pr.
+func (p *PullRequestRepository) CountAssignmentsByPR(ctx context.Context) (map[string]int, *apperrors.AppError) {
+	const query = `
+        SELECT pull_request_id, COUNT(reviewer_id)
+        FROM reviews
+        GROUP BY pull_request_id
+    `
+
+	rows, err := p.pool.Query(ctx, query)
+	if err != nil {
+		log.Printf("query failed: %v", err)
+		return nil, &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+	}
+
+	defer rows.Close()
+
+	res := make(map[string]int)
+
+	for rows.Next() {
+		var prID string
+		var cnt int
+		if err := rows.Scan(&prID, &cnt); err != nil {
+			log.Printf("scan failed: %v", err)
+			return nil, &apperrors.AppError{
+				Code:    apperrors.ErrInternalIssue,
+				Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+			}
+		}
+		res[prID] = cnt
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("rows error: %v", err)
+		return nil, &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+	}
+	return res, nil
+}

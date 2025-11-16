@@ -31,4 +31,6 @@ type PullRequestRepository interface {
 	ReplaceReviewer(ctx context.Context, prID, oldReviewerID, newReviewerID string) *apperrors.AppError
 	GetByReviewer(ctx context.Context, reviewerID string) ([]PullRequest, *apperrors.AppError)
 	IsReviewerAssigned(ctx context.Context, reviewerID string) (bool, *apperrors.AppError)
+	CountAssignmentsByUser(ctx context.Context) (map[string]int, *apperrors.AppError)
+	CountAssignmentsByPR(ctx context.Context) (map[string]int, *apperrors.AppError)
 }

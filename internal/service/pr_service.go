@@ -161,6 +161,23 @@ func (p *PRService) ReassignReviewer(ctx context.Context, prID, oldReviewerID st
 	return updatedPR, newCandidate.ID, nil
 }
 
+// GetAssignmentStats возвращает статистику назначений по пользователям и pr.
+func (p *PRService) GetAssignmentStats(ctx context.Context) (
+	byUsers map[string]int,
+	byPR map[string]int,
+	appErr *apperrors.AppError,
+) {
+	byUsers, appErr = p.prRepo.CountAssignmentsByUser(ctx)
+	if appErr != nil {
+		return
+	}
+	byPR, appErr = p.prRepo.CountAssignmentsByPR(ctx)
+	if appErr != nil {
+		return
+	}
+	return
+}
+
 // pickRev выбирает случайных reviewer'ов из списка users.
 func pickRev(users []storage.User, amount int) ([]storage.User, error) {
 	if amount <= 0 || len(users) == 0 {
