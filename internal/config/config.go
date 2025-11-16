@@ -11,13 +11,25 @@ import (
 type DBSSLmode string
 
 const (
-	// SSLDisable — SSL-шифрование отключено.
+	// SSLDisable - SSL-шифрование отключено.
 	SSLDisable DBSSLmode = "disable"
-	// SSLRequire — SSL обязателен, но сертификат сервера не проверяется.
+	// SSLRequire - SSL обязателен, но сертификат сервера не проверяется.
 	SSLRequire DBSSLmode = "require"
-	// SSLVerifyFull — SSL обязателен, сертификат сервера проверяется.
+	// SSLVerifyFull - SSL обязателен, сертификат сервера проверяется.
 	SSLVerifyFull DBSSLmode = "verify-full"
 )
+
+// ServerConfig - конфигурация HTTP-сервера.
+type ServerConfig struct {
+	Addr string
+}
+
+// LoadServer загружает конфигурацию сервера из окружения.
+func LoadServer() ServerConfig {
+	return ServerConfig{
+		Addr: getEnv("SERVER_ADDR", ":8080"),
+	}
+}
 
 // IsValid возвращает true, если значение является допустимым режимом SSL.
 func (m DBSSLmode) IsValid() bool {
