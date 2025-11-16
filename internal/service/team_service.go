@@ -23,7 +23,12 @@ func (t *TeamService) CreateTeam(ctx context.Context, team storage.Team) *apperr
 	return t.teamRepo.Create(ctx, team)
 }
 
-// GetTeam возвращает команду по имени.
-func (t *TeamService) GetTeam(ctx context.Context, teamName string) (storage.Team, *apperrors.AppError) {
-	return t.teamRepo.Get(ctx, teamName)
+// GetTeamByName возвращает команду по имени.
+func (t *TeamService) GetTeamByName(ctx context.Context, teamName string) (storage.Team, *apperrors.AppError) {
+	return t.teamRepo.GetByName(ctx, teamName)
+}
+
+// GetTeamByID возвращает команду по id.
+func (t *TeamService) GetTeamByID(ctx context.Context, teamID int) (storage.Team, *apperrors.AppError) {
+	return t.teamRepo.GetByID(ctx, teamID)
 }

@@ -91,8 +91,8 @@ func (t *TeamRepository) Create(ctx context.Context, team storage.Team) *apperro
 	return nil
 }
 
-// Get осуществляет поиск в бд команды и её участников по имени команды.
-func (t *TeamRepository) Get(ctx context.Context, teamName string) (storage.Team, *apperrors.AppError) {
+// GetByName осуществляет поиск в бд команды и её участников по имени команды.
+func (t *TeamRepository) GetByName(ctx context.Context, teamName string) (storage.Team, *apperrors.AppError) {
 	const selectTeamByName = `
 	SELECT t.id, t.team_name, t.created_at
 	FROM teams t
@@ -173,4 +173,60 @@ func (t *TeamRepository) Exists(ctx context.Context, teamName string) (bool, *ap
 	}
 
 	return exists, nil
+}
+
+// GetByID получает команду по её ID.
+func (t *TeamRepository) GetByID(ctx context.Context, teamID int) (storage.Team, *apperrors.AppError) {
+	const teamQuery = `SELECT team_name FROM teams WHERE id = $1`
+	const membersQuery = `SELECT user_id, username, is_active FROM users WHERE team_id = $1`
+
+	var team storage.Team
+	err := t.pool.QueryRow(ctx, teamQuery, teamID).Scan(&team.TeamName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return team, &apperrors.AppError{
+				Code:    apperrors.ErrNotFound,
+				Message: apperrors.FromCode(apperrors.ErrNotFound),
+			}
+		}
+		log.Printf("query failed:: %v", err)
+		return team, &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+	}
+
+	rows, err := t.pool.Query(ctx, membersQuery, teamID)
+	if err != nil {
+		log.Printf("query failed:: %v", err)
+		return team, &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+	}
+	defer rows.Close()
+
+	members := make([]storage.User, 0)
+	for rows.Next() {
+		var member storage.User
+		if err := rows.Scan(&member.ID, &member.Username, &member.IsActive); err != nil {
+			log.Printf("scan failed: %v", err)
+			return team, &apperrors.AppError{
+				Code:    apperrors.ErrInternalIssue,
+				Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+			}
+		}
+		members = append(members, member)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("rows failed: %v", err)
+		return team, &apperrors.AppError{
+			Code:    apperrors.ErrInternalIssue,
+			Message: apperrors.FromCode(apperrors.ErrInternalIssue),
+		}
+	}
+
+	team.Members = members
+	return team, nil
 }

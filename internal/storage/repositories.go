@@ -17,8 +17,9 @@ type UserRepository interface {
 // TeamRepository - репозиторий для управления командами.
 type TeamRepository interface {
 	Create(ctx context.Context, team Team) *apperrors.AppError
-	Get(ctx context.Context, teamName string) (Team, *apperrors.AppError)
 	Exists(ctx context.Context, teamName string) (bool, *apperrors.AppError)
+	GetByID(ctx context.Context, teamID int) (Team, *apperrors.AppError)
+	GetByName(ctx context.Context, teamName string) (Team, *apperrors.AppError)
 }
 
 // PullRequestRepository - репозиторий для управления Pull Request'ами.
