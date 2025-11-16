@@ -18,7 +18,7 @@ logs:
 >docker-compose logs -f app
 
 test:
->go test -v ./...
+>./internal/integration/run_tests.sh
 
 lint:
 >golangci-lint run --fix
